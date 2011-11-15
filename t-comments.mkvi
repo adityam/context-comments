@@ -22,18 +22,20 @@
 
      local gsub, find, format = string.gsub, string.find, string.format
 
+     local empty_line = "%%" -- FIXME Make catcode independent!
+
      function comments.install(name,settings)
          local settings = utilities.parsers.settings_to_hash(settings)
          local start = string.escapedpattern(settings[constants.start] or "")
          local stop  = string.escapedpattern(settings[constants.stop] or "")
          local any   = ".-"
          if start ~= "" and stop ~= "" then
-            print("====", name, start, stop)
             local strip_inline     = function(s) return gsub(s, start .. any .. stop, "", 1) end
-            local strip_from_start = function(s) return gsub(s, start .. any,         "", 1) end
+            local strip_from_start = function(s) return gsub(s, start .. any ..  "$", "", 1) end
             local strip_to_stop    = function(s) return gsub(s, "^"   .. any .. stop, "", 1) end 
             -- A simple state based parser for multi-line comments
             local insideComment = false 
+            local cleaned_line = ""
             comments.filters[name] = function(s)
                 local currentfilter = comments.filters[name]
                 if s == "" then
@@ -41,17 +43,17 @@
                 elseif insideComment then
                     if find(s,stop) then
                         insideComment = false
-                        return currentfilter(strip_to_stop(s))
+                        return cleaned_line .. currentfilter(strip_to_stop(s))
                     else
-                        return "%%%%" -- FIXME: assumes standard catcodes.
-                                      -- % are doubled so that it also works when asciimode is enabled.
+                        return empty_line
                     end
                 elseif find(s,start) then
                     if find(s, stop) then
                         return currentfilter(strip_inline(s))
                     else
                         insideComment = true 
-                        return strip_from_start(s)
+                        cleaned_line = strip_from_start(s)
+                        return empty_line
                     end
                 else
                     return s
@@ -106,6 +108,13 @@ As an example, lets consider the following text.
 Random text to demostrate /*really well*/ how the concept /* of multi line
 comments works. This particular example uses C style multi-line comments,
 but other styles also */ work.
+
+A/* single line comment*/B
+
+A/* multi line
+comment 
+with line breaks*/B
+
 \stopbuffer
 
 \typebuffer[C]

@@ -1,0 +1,120 @@
+%D \module
+%D   [     file=t-comments,
+%D      version=2011.11.14,
+%D        title=\CONTEXT\ User Module,
+%D     subtitle=Multi line comments,
+%D       author=Hans Hagen and Aditya Mahajan,
+%D         date=\currentdate,
+%D    copyright=Hans Hagen and Aditya Mahajan,
+%D        email=adityam <at> ieee <dot> org,
+%D      license=Simplified BSD License]
+
+\writestatus{loading}{Comments (ver: 2011.11.14)}
+
+\startluacode
+     thirddata          = thirddata or { }
+     local comments     = { filters = { } }
+     thirddata.comments = comments
+
+     local textlineactions = resolvers.openers.helpers.textlineactions
+     local sequencers      = utilities.sequencers
+     local constants       = interfaces.constants
+
+     local gsub, find, format = string.gsub, string.find, string.format
+
+     function comments.install(name,settings)
+         local settings = utilities.parsers.settings_to_hash(settings)
+         local start = string.escapedpattern(settings[constants.start] or "")
+         local stop  = string.escapedpattern(settings[constants.stop] or "")
+         local any   = ".-"
+         if start ~= "" and stop ~= "" then
+            print("====", name, start, stop)
+            local strip_inline     = function(s) return gsub(s, start .. any .. stop, "", 1) end
+            local strip_from_start = function(s) return gsub(s, start .. any,         "", 1) end
+            local strip_to_stop    = function(s) return gsub(s, "^"   .. any .. stop, "", 1) end 
+            -- A simple state based parser for multi-line comments
+            local insideComment = false 
+            comments.filters[name] = function(s)
+                local currentfilter = comments.filters[name]
+                if s == "" then
+                    return s
+                elseif insideComment then
+                    if find(s,stop) then
+                        insideComment = false
+                        return currentfilter(strip_to_stop(s))
+                    else
+                        return "%%%%" -- FIXME: assumes standard catcodes.
+                                      -- % are doubled so that it also works when asciimode is enabled.
+                    end
+                elseif find(s,start) then
+                    if find(s, stop) then
+                        return currentfilter(strip_inline(s))
+                    else
+                        insideComment = true 
+                        return strip_from_start(s)
+                    end
+                else
+                    return s
+                end
+             end
+             sequencers.appendaction(textlineactions,"after",format("thirddata.comments.filters.%s",name))
+             comments.disable(name)
+         end
+     end
+
+     function comments.enable(name)
+        sequencers.enableaction(textlineactions,format("thirddata.comments.filters.%s",name))
+     end
+
+     function comments.disable(name)
+        sequencers.disableaction(textlineactions,format("thirddata.comments.filters.%s",name))
+     end
+
+\stopluacode
+
+\unprotect
+
+\unexpanded\def\installcomments{\dodoubleargument\doinstallcomments}
+
+\def\doinstallcomments[#name][#settings]%
+    {\ctxlua{thirddata.comments.install(\!!bs#name\!!es,\!!bs\detokenize{#settings}\!!es)}}
+
+\unexpanded\def\enablecomments[#name]%
+   {\ctxlua{thirddata.comments.enable (\!!bs#name\!!es)}}
+
+\unexpanded\def\disablecomments[#name]%
+   {\ctxlua{thirddata.comments.disable(\!!bs#name\!!es)}}
+
+\protect
+
+\installcomments[C]   [start=/*,stop=*/]
+
+\continueifinputfile{t-comments.mkvi}
+
+\starttext
+
+\section{Multi line comments}
+
+Unlike most programming languages, \TEX\ has no support for multi line comments,
+which can extend over multiple lines, or limit a comment to part of a line. This
+module provides such a support. 
+
+As an example, lets consider the following text.
+
+\startbuffer[C]
+\section{First /*actually was second*/ section}
+Random text to demostrate /*really well*/ how the concept /* of multi line
+comments works. This particular example uses C style multi-line comments,
+but other styles also */ work.
+\stopbuffer
+
+\typebuffer[C]
+
+Now, if we enable C-type multi-line comments, this text is typeset as
+
+\startframedtext[width=broad]
+  \enablecomments[C] \getbuffer[C]
+\stopframedtext
+
+
+\stoptext
